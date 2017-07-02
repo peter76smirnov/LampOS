@@ -25,6 +25,7 @@ boot.iso: boot.bin
 	grub-mkrescue -o boot.iso iso/
 
 clean:
+	-rm -rf iso/
 	-rm -rf boot.bin boot.iso
 	-rm -rf $(objects)
 

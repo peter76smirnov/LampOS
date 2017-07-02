@@ -17,7 +17,7 @@ vga_init()
 	x_coord = y_coord = 0;
 	bg_color = VGA_COLOR_BLACK;
 	fg_color = VGA_COLOR_LIGHT_GREY;
-	buffer = (void *)VGA_MEMORY;
+	buffer = (uint16_t *)VGA_MEMORY;
 
 	for (i = 0; i < NELEMS(tabstp); i++)
 		tabstp[i] = 0x01010101;

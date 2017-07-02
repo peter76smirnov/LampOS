@@ -3,19 +3,17 @@
 #include "vga.h"
 
 int
-kernel_main()
+kernel_main(uint32_t magic, void *mbinfo)
 {
 	vga_init();
-	segm_init();
-	paging_init();
-/*
-	vga_puts("Hello, kernel world!\n");
-	vga_puts("\ttest\ttest\n");
-	vga_puts("D\bC if fun\n");
-*/
-	kprintf("Hello, paging world!\n");
-	kprintf("\ttest\ttest\n");
-	kprintf("D\bC is fun! (no)");
+//	segm_init();
+//	paging_init();
 
+	kprintf("Welcome\n%X\n", magic);
+/*
+	void *info = (void *)0x10000;
+	char *boot_loader_name = (char *)info+64;
+	kprintf("%s\n", *boot_loader_name);
+*/
 	return 0;
 }

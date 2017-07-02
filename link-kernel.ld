@@ -12,12 +12,10 @@ SECTIONS
 		*(.text)
 	}
 
-	/* ro data */
 	.rodata BLOCK(4K) : ALIGN(4K)
 	{
 		*(.rodata)
 	}
-
 	/* rw initialized data */
 	.data BLOCK(4K) : ALIGN(4K)
 	{

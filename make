@@ -16,21 +16,16 @@ extern void load_page_directory(void *page_directory);
 void
 paging_init()
 {
-	uint32_t *pte;
+	uint32_t *first_pte;
 	uint32_t address;
 	int i;
 
-	/* Identity paging first 4M */
-	address = 0x100000;
-	pte = &page_directory[0];
-	for (i = 0; i < 1024; i++, address += 0x1000, pte++) {
-		*pte = address | 0x3;
-
-		kprintf("pt[%d] %X\n", i, *pte);
+	first_pte = &page_directory[0];
+	address = 0x0;
+	for (i = 0; i < 1024; i++, address += 0x1000, first_pte++) {
+		*first_pte = address | 0x7;	/* PRESENT READ-WRITE ALL */
+		kprintf("pt[%d] %X\n", i, *first_pte);
 	}
 
-/*
-	load_page_directory(&page_directory);
-*/
+//	load_page_directory(&page_directory);
 }
-

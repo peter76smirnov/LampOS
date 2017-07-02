@@ -12,16 +12,15 @@
 .long CHECKSUM
 
 .section .bss
-.align 16
+.align	0x10
 stack_bottom:
-.skip 16384
+.skip	0x4000
 stack_top:
 
 .section .text
 
 .global	_start
 .global load_gdt
-.global load_page_directory
 
 .type	_start,	@function
 _start:
@@ -35,7 +34,11 @@ _start:
 	# paging should be enabled here
 
 	# enter high-level kernel
+	push	%ebx
+	push	%eax
 	call	kernel_main
+
+	addl	$8, %esp
 
 	# put computer into infinite loop
 	cli		# disable interrupts
@@ -59,11 +62,3 @@ load_gdt:
 	mov	%eax, %ss
 	ret
 
-.type	load_page_directory, @function
-load_page_directory:
-	movl	0x4(%esp), %eax
-	mov	%cr3, %eax
-
-	mov	%eax, %cr0
-	or	%eax, 0x80000001
-	mov	%cr0, %eax
