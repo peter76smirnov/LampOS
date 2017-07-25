@@ -2,7 +2,7 @@ KERNEL_LD = link-kernel.ld
 GRUB_CFG = grub.cfg
 CC = /home/peter76smirnov/opt/cross/bin/i686-elf-gcc
 CFLAGS = -O2 -Wall -Wextra
-sources = main.c vga.c libk.c stdio.c segm.c pag.c
+sources = main.c vga.c libk.c stdio.c segm.c pag.c idt.c
 headers = kernel.h defs.h vga.h stdio.h
 objects = $(sources:.c=.o)
 

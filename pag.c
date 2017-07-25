@@ -9,28 +9,30 @@
 #define PG_ACCESS	(1 << 5)
 #define PG_DIRTY	(1 << 6)
 
-static uint32_t page_directory[1024];
+uint32_t page_directory[1024]	__attribute__ ((aligned(0x1000)));
+uint32_t page_table[1024]	__attribute__ ((aligned(0x1000)));
 
-extern void load_page_directory(void *page_directory);
+extern void load_pgdir(void *);
 
 void
-paging_init()
+pag_init()
 {
-	uint32_t *pte;
-	uint32_t address;
 	int i;
 
 	/* Identity paging first 4M */
-	address = 0x100000;
-	pte = &page_directory[0];
-	for (i = 0; i < 1024; i++, address += 0x1000, pte++) {
-		*pte = address | 0x3;
-
-		kprintf("pt[%d] %X\n", i, *pte);
+	page_directory[0] = (uint32_t)page_table | 0x3;
+	for (i = 0; i < 1024; i++) {
+		page_table[i] = (i * 0x1000) | 0x3;
 	}
 
-/*
-	load_page_directory(&page_directory);
-*/
+	/* Self-referencing dir entry */
+	page_directory[1023] = (uint32_t)page_directory | 0x3;
+
+	kprintf("pgdir address\t%X\n\n", page_directory);
+	kprintf("enabling paging...\n");
+
+	load_pgdir(&page_directory);
+
+	kprintf("Hello, paging world!\n\n");
 }
 

@@ -4,47 +4,22 @@
 #include "stdio.h"
 #include "defs.h"
 
-#define SEGM_CODE	0x9A
-#define SEGM_DATA	0x92
-
-#define SEGM_READ	(1 << 0)
-#define SEGM_WRITE	(1 << 1)
-#define SEGM_EXEC	(1 << 2)
-
-#define PRIVL_KERNEL	0x0
-#define PRIVL_USER	0x3
-
-/* access_bit */
-#define GDT_ACCESS	(1 << 0)	/* part of type */
-#define GDT_RW		(1 << 1)	/* part of type */
-#define GDT_DC		(1 << 2)	/* part of type */
-#define GDT_EXEC	(1 << 3)	/* part of type */
-#define GDT_DESC_TYPE	(1 << 4)
-#define GDT_PRIVL_MASK	0x3		/* 56 -- privilege */
-#define GDT_PRESENT	(1 << 7)
-
-/* flags */
-#define GDT_AVAIL	(1 << 0)
-					/* 1 -- zero */
-#define GDT_SIZE	(1 << 2)
-#define GDT_GRAN	(1 << 3)
-
 struct gdtr {
-	uint16_t	size;
-	uint32_t	offset;
-}  __attribute__ ((packed));
+	uint16_t limit;
+	uint32_t base;
+} __attribute__ ((packed));
 
 struct gdt_entry {
-	uint32_t	limit_low : 16;
-	uint32_t	base_low : 24;
-	uint8_t		access_byte : 8;
-	uint32_t	limit_high : 4;
-	uint8_t		flags : 4;
-	uint32_t	base_high : 8;
+	uint16_t	limit_0;
+	uint16_t	base_0;
+	uint8_t		base_1;
+	uint8_t		acs_byte;
+	uint8_t		gran_byte;
+	uint8_t		base_2;
 } __attribute__ ((packed));
 
 struct tss_struct {
-	uint16_t	prev, res0;
+	uint16_t	link, res0;
 	uint32_t	esp0;
 	uint16_t	ss0, res1;
 	uint32_t	esp1;
@@ -68,8 +43,8 @@ struct tss_struct {
 	uint16_t	ds, res7;
 	uint16_t	fs, res8;
 	uint16_t	gs, res9;
-	uint16_t	ldtr, res10;
-	uint16_t	res11, iombase;
+	uint16_t	ldt, res10;
+	uint16_t	res11, iombase;	/* res11[0] debug trap bit */
 } __attribute__ ((packed));
 
 static struct gdtr gdt_ptr;
@@ -78,86 +53,66 @@ static struct tss_struct tss;
 
 static unsigned char interrupt_stack[4096];
 
-extern void load_gdt(struct gdtr *gdt);
-
-int
-gdt_entry_set(unsigned index,
-    uint32_t base, uint32_t limit, uint8_t privl, uint8_t flags)
-{
-	struct gdt_entry *gdtep;
-
-	if (index >= NELEMS(gdt_table))
-		return -1;
-
-	gdtep = gdt_table + index;
-
-	if (index == 0) {
-		gdtep->access_byte = 0;
-		gdtep->flags = 0;
-		return 0;
-	}
-
-	gdtep->flags = GDT_SIZE;		/* mode32 */
-
-	/* adjust granularity for segments >= 2^16 */
-	if (limit >= 0xFFFF) {
-		gdtep->flags |= GDT_GRAN;	/* in pages */
-		gdtep->limit_low = (limit >> 12) & 0xFFFF;
-		gdtep->limit_high = (limit >> 24) & 0xF;
-	} else {
-		gdtep->limit_low = limit & 0xFFFF;
-		gdtep->limit_high = (limit >> 12) & 0xF;
-	}
-
-	/* set privilege level and present bit */
-	gdtep->access_byte = (privl & GDT_PRIVL_MASK) << 5;
-	gdtep->access_byte |= GDT_PRESENT;
-	gdtep->access_byte |= GDT_DESC_TYPE;	/* type -- code/data */
-
-	/*
-	 * Write is never allowed for code segments.
-	 * Data segments are always readable.
-	 */
-	if (flags & SEGM_EXEC) {
-		gdtep->access_byte |= GDT_EXEC;
-		if (flags & SEGM_READ)
-			gdtep->access_byte |= GDT_RW;
-	} else {
-		if (flags & SEGM_WRITE)
-			gdtep->access_byte |= GDT_RW;
-	}
-
-	kprintf("index: %u access_byte: %x flags: %x privl %x\n",
-	    index, gdtep->access_byte, gdtep->flags, privl);
-
-	return 0;
-}
+extern void load_gdt(struct gdtr *);
 
 void
 segm_init()
 {
-	gdt_ptr.size = sizeof gdt_table - 1;
-	gdt_ptr.offset = (uint32_t)&gdt_table;
+	uint32_t tss_base = (uint32_t)&tss;
+	uint32_t tss_limit = tss_base + sizeof tss;
 
-	/* NULL entry */
-	gdt_entry_set(0, 0, 0, 0, 0);
+	gdt_ptr.limit = sizeof gdt_table - 1;
+	gdt_ptr.base = gdt_table;
 
-	/* kernel code and data segments */
-	gdt_entry_set(1, 0x0, 0xFFFFFFFF, PRIVL_KERNEL, SEGM_READ|SEGM_EXEC);
-	gdt_entry_set(2, 0x0, 0xFFFFFFFF, PRIVL_KERNEL, SEGM_READ|SEGM_WRITE);
-
-	/* user code and data segments */
-	gdt_entry_set(3, 0x0, 0xFFFFFFFF, PRIVL_USER, SEGM_READ|SEGM_EXEC);
-	gdt_entry_set(4, 0x0, 0xFFFFFFFF, PRIVL_USER, SEGM_READ|SEGM_WRITE);
+	/*  NULL descriptor */
+	memset(gdt_table, 0, sizeof (struct gdt_entry));
+	/*  Kernel code */
+	gdt_table[1].limit_0 =	0xFFFF;
+	gdt_table[1].base_0 =	0x0;
+	gdt_table[1].base_1 =	0x0;
+	gdt_table[1].acs_byte =	0x9A;
+	gdt_table[1].gran_byte =0xFC;
+	gdt_table[1].base_2 =	0x0;
+	/*  Kernel data */
+	gdt_table[2].limit_0 =	0xFFFF;
+	gdt_table[2].base_0 =	0x0;
+	gdt_table[2].base_1 =	0x0;
+	gdt_table[2].acs_byte =	0x92;
+	gdt_table[2].gran_byte =0xFC;
+	gdt_table[2].base_2 =	0x0;
+	/*  User code */
+	gdt_table[3].limit_0 =	0xFFFF;
+	gdt_table[3].base_0 =	0x0;
+	gdt_table[3].base_1 =	0x0;
+	gdt_table[3].acs_byte =	0xFA;
+	gdt_table[3].gran_byte =0xFC;
+	gdt_table[3].base_2 =	0x0;
+	/*  User data */
+	gdt_table[4].limit_0 =	0xFFFF;
+	gdt_table[4].base_0 =	0x0;
+	gdt_table[4].base_1 =	0x0;
+	gdt_table[4].acs_byte =	0xF2;
+	gdt_table[4].gran_byte =0xFC;
+	gdt_table[4].base_2 =	0x0;
 
 	/* TSS */
+	/* 0x8	code selector */
+	/* 0x10	data selector */
 	memset(&tss, 0, sizeof tss);
-	tss.ss0 = KERNEL_DATA;
+	tss.ss0 = 0x10;
 	tss.esp0 = (uint32_t)&interrupt_stack;
-	tss.cs = KERNEL_CODE|PRIVL_USER;
-	tss.ss = tss.es = tss.fs = tss.gs = KERNEL_DATA|PRIVL_USER;
-	gdt_entry_set(5, (uint32_t)&tss, (uint32_t)&tss + sizeof tss, PRIVL_USER, SEGM_READ|SEGM_EXEC);
+	tss.cs = 0x8 | 0x3;
+	tss.ss = tss.es = tss.fs = tss.gs = 0x10 | 0x3;
+
+	gdt_table[5].limit_0 =	tss_limit;
+	gdt_table[5].base_0 =	tss_base;
+	gdt_table[5].base_1 =	tss_base >> 16;
+	gdt_table[5].acs_byte =	0xFA;
+	gdt_table[5].gran_byte =tss_limit>>16 | 0xC;
+	gdt_table[5].base_2 =	tss_base >> 24;
 
 	load_gdt(&gdt_ptr);
+
+	kprintf("GDT address\t%x\n\n", gdt_table);
 }
 
