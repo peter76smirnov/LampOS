@@ -23,6 +23,7 @@ stack_top:
 .global load_gdt
 .global load_idt
 .global load_pgdir
+.global	_pgupdate
 
 .type	_start,	@function
 _start:
@@ -41,6 +42,23 @@ _start:
 	call	kernel_main
 
 	addl	$8, %esp
+
+	# get PS/2 keyboard input
+#if 0
+	mov	$0x60, %dx
+
+	mov	$0xED, %al
+	outb	%al, %dx
+
+.Lack:
+	inb	%dx, %al
+	cmp	$0xFA, %al
+	jne	.Lack
+
+	mov	$0x4, %al
+	outb	%al, %dx
+#endif
+
 
 	# put computer into infinite loop
 	cli		# disable interrupts
@@ -123,5 +141,11 @@ load_pgdir:
 	mov	%eax, %cr0
 	jmp	.finish
 .finish:
+	ret
+
+
+_pgupdate:
+	mov	%cr3, %eax
+	mov	%eax, %cr3
 	ret
 

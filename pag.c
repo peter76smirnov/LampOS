@@ -2,37 +2,84 @@
 
 #include "kernel.h"
 #include "stdio.h"
+#include "pag.h"
 
-#define PG_PRESENT	(1 << 0)
-#define PG_RW		(1 << 1)
-#define PG_US		(1 << 2)
-#define PG_ACCESS	(1 << 5)
-#define PG_DIRTY	(1 << 6)
-
-uint32_t page_directory[1024]	__attribute__ ((aligned(0x1000)));
-uint32_t page_table[1024]	__attribute__ ((aligned(0x1000)));
+#define	VADDR(di, ti, off)	((di<<22) + (ti<<12) + off)
 
 extern void load_pgdir(void *);
+extern void _pgupdate();
 
 void
-pag_init()
+pginit()
 {
 	int i;
 
 	/* Identity paging first 4M */
-	page_directory[0] = (uint32_t)page_table | 0x3;
+	pgdirectory[0] = (uint32_t)pgtable | 0x3;
 	for (i = 0; i < 1024; i++) {
-		page_table[i] = (i * 0x1000) | 0x3;
+		pgtable[0][i] = (i * 0x1000) | 0x3;
 	}
 
 	/* Self-referencing dir entry */
-	page_directory[1023] = (uint32_t)page_directory | 0x3;
+	pgdirectory[1023] = (uint32_t)pgdirectory | 0x3;
 
-	kprintf("pgdir address\t%X\n\n", page_directory);
+	kprintf("page directory address\t%X\n\n", pgdirectory);
 	kprintf("enabling paging...\n");
 
-	load_pgdir(&page_directory);
+	load_pgdir(&pgdirectory);
 
 	kprintf("Hello, paging world!\n\n");
+
+	kprintf("page table address %X\n", pgtable);
+	kprintf("allocated\t%X\n", pgalloc());
+	kprintf("allocated\t%X\n", pgalloc());
+	pgfree(0x105004);
+	kprintf("allocated\t%X\n", pgalloc());
+	pgfree(0x105000);
+	kprintf("allocated\t%X\n", pgalloc());
+}
+
+paddr_t
+pgalloc()
+{
+	uint32_t **table;
+	int i;
+
+//	table = (uint32_t **)(pgdirectory[0] & 0xFFFFF000);
+
+//	kprintf("\t\t%X\n", pgdirectory[0] & 0xFFFFF000);
+
+//	kprintf("\t%X\n", table);
+
+	for (i = 0; i < 1024; i++) {
+		int j;
+
+		if (!(pgdirectory[i] & PG_PRESENT))
+			continue;
+
+		table = (uint32_t **)(pgdirectory[i] & 0xFFFFF000);
+
+		kprintf("\t%X\n", *table[0]);
+
+		for (j = 0; j < 1024; j++) {
+			if (!(*table[j] & PG_PRESENT)) {
+				*table[j] |= PG_PRESENT;
+				_pgupdate();
+
+//				return (paddr_t)table[j];
+				return 0;
+			}
+		}
+	}
+
+	return 0;
+}
+
+void
+pgfree(paddr_t addr)
+{
+	*(paddr_t *)addr &= ~PG_PRESENT;
+	kprintf("freed\t%X\n", addr);
+	_pgupdate();
 }
 
